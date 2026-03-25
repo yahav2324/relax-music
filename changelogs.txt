@@ -1,0 +1,8 @@
+1.0.3:
+- Fixed permisions.
+
+1.0.2:
+- Close modal when REWARDED dont loaded.
+
+1.0.0:
+- Initial release.
