@@ -1,0 +1,8 @@
+node_modules/
+.git/
+android/
+ios/
+dist/
+# אם יש לך תיקייה עם קבצי MP3 או וידאו מקומיים שהם לא חלק מהאפליקציה:
+assets/video/ 
+assets/audio/

@@ -2,11 +2,12 @@
   "expo": {
     "name": "Relax Songs",
     "slug": "relax-songs",
-    "version": "1.0.3",
+    "version": "1.1.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "relaxsongs",
     "userInterfaceStyle": "automatic",
+    "platforms": ["ios", "android"],
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
@@ -14,26 +15,44 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yahav.relaxsongs"
+      "bundleIdentifier": "com.yahav.relaxsongs",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Relax Songs needs access to the microphone so you can record lullabies for your baby."
+      }
     },
     "android": {
       "package": "com.yahav.relaxsongs",
-      "versionCode": 3,
-      "permissions": ["MODIFY_AUDIO_SETTINGS"],
+      "versionCode": 18,
+      "permissions": [
+        "MODIFY_AUDIO_SETTINGS",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#121212",
         "foregroundImage": "./assets/images/icon.png"
-      },
-      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
+      }
     },
     "plugins": [
       "expo-router",
-      // ["react-native-iap", { "paymentProvider": "both" }],
       [
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-3949660461162879~1915213556",
           "iosAppId": "ca-app-pub-3949660461162879~1915213556"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysPermission": "Allow Relax Songs to use your location to sync music with the weather."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Relax Songs to access your microphone to record lullabies."
         }
       ]
     ],
@@ -42,6 +61,12 @@
       "eas": {
         "projectId": "9cb902be-8d0a-4e95-a4e2-528e350cadc8"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9cb902be-8d0a-4e95-a4e2-528e350cadc8"
     }
   }
 }

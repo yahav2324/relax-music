@@ -1,422 +1,666 @@
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import { File, Paths } from "expo-file-system";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
+  Linking,
+  Modal,
+  Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  Modal,
-  Switch,
-  Image,
 } from "react-native";
 import {
   BannerAd,
   BannerAdSize,
   RewardedAd,
   RewardedAdEventType,
-  AdEventType,
-  TestIds,
 } from "react-native-google-mobile-ads";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
+import { SoundsData } from "./types";
+import { useWeather } from "./hooks/useWeather";
 
-// ה-IDs המעודכנים מהצילום מסך שלך
-const REWARDED_ID = __DEV__
-  ? TestIds.REWARDED
-  : "ca-app-pub-3949660461162879/5954664365"; // מעודכן ל-Rewarded_Unlock_Sound
+const REMOTE_ASSETS_BASE = process.env.EXPO_PUBLIC_REMOTE_ASSETS_BASE;
+const WEATHER_API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY;
+const WEATHER_URL = process.env.EXPO_PUBLIC_WEATHER_URL;
+const CONTACT_EMAIL = process.env.EXPO_PUBLIC_CONTACT_EMAIL;
+const APP_PACKAGE_NAME = process.env.EXPO_PUBLIC_APP_PACKAGE_NAME;
 
-const BANNER_ID = __DEV__
-  ? TestIds.BANNER
-  : "ca-app-pub-3949660461162879/6520672972"; // מעודכן ל-Banner_Main_Screen
+const VIDEO_FOLDER = `${REMOTE_ASSETS_BASE}/video/`;
+const SOUND_CONFIG_JSON = `${VIDEO_FOLDER}sounds.json`;
+const COUPONS_CONFIG_JSON = `${REMOTE_ASSETS_BASE}/coupons.json`;
 
-const rewarded = RewardedAd.createForAdRequest(REWARDED_ID, {
-  requestNonPersonalizedAdsOnly: true,
-});
-
-const FREE_LIMIT_PER_DAY = 5;
-
-const SOUNDS_DATA = [
+const rewarded = RewardedAd.createForAdRequest(
+  process.env.EXPO_PUBLIC_REWARDED_ID,
   {
-    id: "rain",
-    label: "Rain",
-    file: require("../assets/rain.mp3"),
-    icon: require("../assets/images/rain.png"),
-    glow: "#4CAF50",
+    requestNonPersonalizedAdsOnly: true,
   },
-  {
-    id: "waves",
-    label: "Ocean",
-    file: require("../assets/waves.mp3"),
-    icon: require("../assets/images/waves.png"),
-    glow: "#2196F3",
-  },
-  {
-    id: "fire",
-    label: "Fire",
-    file: require("../assets/fire.mp3"),
-    icon: require("../assets/images/fire.png"),
-    glow: "#F44336",
-  },
-  {
-    id: "white_noise",
-    label: "White Noise",
-    file: require("../assets/white_noise.mp3"),
-    icon: require("../assets/images/white_noise.png"),
-    glow: "#E0E0E0",
-  },
-  {
-    id: "thunder",
-    label: "Thunder",
-    file: require("../assets/thunder.mp3"),
-    icon: require("../assets/images/thunder.png"),
-    glow: "#FFEB3B",
-  },
-  {
-    id: "forest",
-    label: "Forest",
-    file: require("../assets/forest.mp3"),
-    icon: require("../assets/images/forest.png"),
-    glow: "#00E676",
-  },
-  {
-    id: "birds",
-    label: "Birds",
-    file: require("../assets/birds.mp3"),
-    icon: require("../assets/images/birds.png"),
-    glow: "#2196F3",
-  },
-  {
-    id: "desert",
-    label: "Desert",
-    file: require("../assets/desert.mp3"),
-    icon: require("../assets/images/desert.png"),
-    glow: "#F44336",
-  },
-  {
-    id: "wind",
-    label: "Wind",
-    file: require("../assets/wind.mp3"),
-    icon: require("../assets/images/wind.png"),
-    glow: "#E0E0E0",
-  },
-  {
-    id: "train",
-    label: "Train",
-    file: require("../assets/train.mp3"),
-    icon: require("../assets/images/train.png"),
-    glow: "#FFEB3B",
-  },
-  {
-    id: "airplane",
-    label: "Airplane",
-    file: require("../assets/airplane.mp3"),
-    icon: require("../assets/images/airplane.png"),
-    glow: "#4CAF50",
-  },
-  {
-    id: "city",
-    label: "City",
-    file: require("../assets/city.mp3"),
-    icon: require("../assets/images/city.png"),
-    glow: "#2196F3",
-  },
-  {
-    id: "piano",
-    label: "Piano",
-    file: require("../assets/piano.mp3"),
-    icon: require("../assets/images/piano.png"),
-    glow: "#F44336",
-  },
-  {
-    id: "meditation",
-    label: "Meditation",
-    file: require("../assets/meditation.mp3"),
-    icon: require("../assets/images/meditation.png"),
-    glow: "#E0E0E0",
-  },
-];
+);
 
 export default function HomeScreen() {
+  const [soundsData, setSoundsData] = useState<SoundsData[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeSounds, setActiveSounds] = useState<Record<string, Audio.Sound>>(
     {},
   );
-  const [loadingSounds, setLoadingSounds] = useState<Record<string, boolean>>(
+  const [downloadingIds, setDownloadingIds] = useState<Record<string, boolean>>(
     {},
   );
+  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
+  const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
   const [dailyUsageCount, setDailyUsageCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const [adLoaded, setAdLoaded] = useState(false);
-  const [isAdLoading, setIsAdLoading] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
+
+  const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const pendingSoundRef = useRef<string | null>(null);
 
-  const setupAudio = async () => {
+  const [isBlackMode, setIsBlackMode] = useState(false);
+  const [showTimerPicker, setShowTimerPicker] = useState(false);
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [isCryDetectionActive, setIsCryDetectionActive] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [freeLimit, setFreeLimit] = useState(5);
+  const [isPremium, setIsPremium] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+
+  const textColor = isDarkMode ? "#ffffff" : "#1e293b";
+  const subTextColor = isDarkMode ? "#94a3b8" : "#475569";
+  const cloudAnim = useRef(new Animated.Value(-100)).current;
+  const micAnim = useRef(new Animated.Value(1)).current;
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  };
+
+  const stopAllSounds = useCallback(async () => {
+    const ids = Object.keys(activeSounds);
+    for (const id of ids) {
+      try {
+        await activeSounds[id].stopAsync();
+        await activeSounds[id].unloadAsync();
+      } catch {
+        console.error("Can't to stop all sounds");
+      }
+    }
+    setActiveSounds({});
+    setTimerSeconds(null);
+  }, [activeSounds]);
+
+  const downloadSound = useCallback(async (id: string, fileName: string) => {
+    const cleanFileName = fileName.trim();
+    const downloadUrl = VIDEO_FOLDER + cleanFileName;
+    const localFile = new File(Paths.document, cleanFileName);
+    setDownloadingIds((prev) => ({ ...prev, [id]: true }));
     try {
-      await Audio.setAudioModeAsync({
-        staysActiveInBackground: true,
-        playsInSilentModeIOS: true,
-        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-        shouldDuckAndroid: false,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-        playThroughEarpieceAndroid: false,
-      });
-    } catch (e) {
-      console.log(e);
+      await File.downloadFileAsync(downloadUrl, localFile);
+      const currentDownloads = await AsyncStorage.getItem("downloaded_songs");
+      let downloadsArr = currentDownloads ? JSON.parse(currentDownloads) : [];
+      if (!downloadsArr.includes(id)) {
+        downloadsArr.push(id);
+        await AsyncStorage.setItem(
+          "downloaded_songs",
+          JSON.stringify(downloadsArr),
+        );
+        setDownloadedIds(downloadsArr);
+      }
+      return localFile.uri;
+    } catch {
+      return null;
+    } finally {
+      setDownloadingIds((prev) => ({ ...prev, [id]: false }));
+    }
+  }, []);
+
+  const toggleSound = useCallback(
+    async (soundId: string, fileName: string) => {
+      const localFile = new File(Paths.document, fileName);
+      if (activeSounds[soundId]) {
+        try {
+          await activeSounds[soundId].stopAsync();
+          await activeSounds[soundId].unloadAsync();
+        } catch {
+          console.error("Error can`t open this audio");
+        }
+        setActiveSounds((prev) => {
+          const ns = { ...prev };
+          delete ns[soundId];
+          return ns;
+        });
+        return;
+      }
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: localFile.uri },
+          { shouldPlay: true, isLooping: true, volume: 0.7 },
+        );
+        setActiveSounds((prev) => ({ ...prev, [soundId]: sound }));
+      } catch {
+        setDownloadedIds((prev) => {
+          const ns = prev.filter((id) => id !== soundId);
+          AsyncStorage.setItem("downloaded_songs", JSON.stringify(ns));
+          return ns;
+        });
+      }
+    },
+    [activeSounds],
+  );
+
+  const playSoundDirect = useCallback(
+    async (fileName: string): Promise<Audio.Sound | null> => {
+      const localFile = new File(Paths.document, fileName);
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: localFile.uri },
+          { shouldPlay: true, isLooping: true, volume: 0.7 },
+        );
+        return sound;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  const { isWeatherSyncing, syncWeather, weatherColors } = useWeather({
+    apiKey: WEATHER_API_KEY,
+    dailyUsageCount,
+    downloadedIds,
+    downloadSound,
+    freeLimit,
+    isDarkMode,
+    playSoundDirect,
+    setActiveSounds,
+    setDailyUsageCount,
+    soundsData,
+    stopAllSounds,
+    unlockedIds,
+    url: WEATHER_URL,
+  });
+
+  const checkCoupon = async () => {
+    if (!couponInput.trim()) return;
+    try {
+      const res = await fetch(`${COUPONS_CONFIG_JSON}?t=${Date.now()}`);
+      const data = await res.json();
+      const coupon = data.find(
+        (c: any) => c.code === couponInput.trim().toUpperCase(),
+      );
+      if (coupon) {
+        if (coupon.type === "FREE_FOREVER") {
+          setIsPremium(true);
+          await AsyncStorage.setItem("is_premium", "true");
+          await AsyncStorage.setItem("active_coupon_code", coupon.code);
+          Alert.alert("Success!", "VIP Unlocked.");
+        } else if (coupon.type === "EXTRA_SONGS") {
+          setFreeLimit(coupon.amount);
+          Alert.alert("Success!", `Limit increased to ${coupon.amount}`);
+        }
+        setCouponInput("");
+        setShowCouponModal(false);
+      } else {
+        Alert.alert("Error", "Invalid coupon code.");
+      }
+    } catch {
+      Alert.alert("Error", "Could not verify coupon.");
     }
   };
 
-  const toggleSound = useCallback(async (soundId: string, file: any) => {
-    setActiveSounds((currentActive) => {
-      const existingSound = currentActive[soundId];
-      if (existingSound) {
-        existingSound.stopAsync().then(() => existingSound.unloadAsync());
-        const newState = { ...currentActive };
-        delete newState[soundId];
-        return newState;
+  const toggleCryDetection = async () => {
+    await stopAllSounds();
+    if (isCryDetectionActive) {
+      setIsCryDetectionActive(false);
+      try {
+        await recordingRef.current?.stopAndUnloadAsync();
+      } catch (e) {
+        console.error("Error can't start cry detection", e);
       }
+      recordingRef.current = null;
+      return;
+    }
+    const { status, canAskAgain } = await Audio.getPermissionsAsync();
+    if (status === "denied" && !canAskAgain) {
+      Alert.alert(
+        "Microphone Required",
+        "Microphone access is disabled. Please enable it in settings.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+        ],
+      );
+      return;
+    }
+    const { status: newStatus } = await Audio.requestPermissionsAsync();
+    if (newStatus === "granted") {
+      startCryDetectionLogic();
+    }
+  };
 
-      setLoadingSounds((prev) => ({ ...prev, [soundId]: true }));
-      Audio.Sound.createAsync(file, {
-        shouldPlay: true,
-        isLooping: true,
-        volume: 0.7,
-      })
-        .then(({ sound }) => {
-          setActiveSounds((prev) => ({ ...prev, [soundId]: sound }));
-        })
-        .finally(() => {
-          setLoadingSounds((prev) => {
-            const newState = { ...prev };
-            delete newState[soundId];
-            return newState;
-          });
-        });
+  const startCryDetectionLogic = async () => {
+    try {
+      setIsCryDetectionActive(true);
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+      });
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(
+        Audio.RecordingOptionsPresets.LOW_QUALITY,
+      );
+      recording.setProgressUpdateInterval(500);
+      recording.setOnRecordingStatusUpdate((status) => {
+        if (status.metering && status.metering > -25) {
+          triggerAutoPlay();
+        }
+      });
+      await recording.startAsync();
+      recordingRef.current = recording;
+    } catch (err) {
+      console.error("Cry Detection failed:", err);
+      setIsCryDetectionActive(false);
+    }
+  };
 
-      return currentActive;
-    });
-  }, []);
+  const triggerAutoPlay = () => {
+    if (Object.keys(activeSounds).length > 0) return;
+    const babySound = soundsData.find(
+      (s) => s.category === "Baby" || s.label.includes("White Noise"),
+    );
+    if (babySound) handlePress(babySound);
+  };
 
-  const unlockAndPlay = useCallback(
-    (soundId: string) => {
-      const item = SOUNDS_DATA.find((s) => s.id === soundId);
-      if (item) toggleSound(item.id, item.file);
-      pendingSoundRef.current = null;
-    },
-    [toggleSound],
+  const handlePress = async (item: any) => {
+    const isDownloaded = downloadedIds.includes(item.id);
+    const isUnlocked = unlockedIds.includes(item.id) || isPremium;
+    if (isDownloaded || isUnlocked) {
+      const uri = isDownloaded
+        ? true
+        : await downloadSound(item.id, item.fileName);
+      if (uri) toggleSound(item.id, item.fileName);
+      return;
+    }
+    if (dailyUsageCount < freeLimit) {
+      const nextCount = dailyUsageCount + 1;
+      setDailyUsageCount(nextCount);
+      await AsyncStorage.setItem("usageCount", nextCount.toString());
+      const uri = await downloadSound(item.id, item.fileName);
+      if (uri) toggleSound(item.id, item.fileName);
+    } else {
+      Alert.alert("Unlock Sound", "Watch an ad to unlock this sound forever!", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Watch Now",
+          onPress: () => {
+            pendingSoundRef.current = item.id;
+            if (adLoaded) rewarded.show();
+            else rewarded.load();
+          },
+        },
+      ]);
+    }
+  };
+
+  const categories = useMemo(
+    () => [
+      "All",
+      ...new Set(soundsData.map((s) => s.category).filter(Boolean)),
+    ],
+    [soundsData],
+  );
+
+  const filtered = useMemo(
+    () =>
+      soundsData.filter(
+        (s) =>
+          s.label.toLowerCase().includes(searchQuery.toLowerCase()) &&
+          (selectedCategory === "All" || s.category === selectedCategory),
+      ),
+    [searchQuery, soundsData, selectedCategory],
   );
 
   useEffect(() => {
+    Animated.loop(
+      Animated.timing(cloudAnim, {
+        toValue: 450,
+        duration: 30000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ).start();
+  }, [cloudAnim]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timerSeconds !== null && timerSeconds > 0) {
+      interval = setInterval(() => {
+        setTimerSeconds((prev) => (prev !== null ? prev - 1 : null));
+      }, 1000);
+    } else if (timerSeconds === 0) {
+      stopAllSounds();
+      Alert.alert("Rest Time", "The timer has finished. Sleep well!");
+    }
+    return () => clearInterval(interval);
+  }, [timerSeconds, stopAllSounds]);
+
+  useEffect(() => {
+    if (timerSeconds !== null && timerSeconds <= 60 && timerSeconds > 0) {
+      const vol = timerSeconds / 60;
+      Object.values(activeSounds).forEach((s) => s.setVolumeAsync(vol));
+    }
+  }, [timerSeconds, activeSounds]);
+
+  useEffect(() => {
+    let animation: Animated.CompositeAnimation;
+    if (isCryDetectionActive) {
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(micAnim, {
+            toValue: 0.3,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(micAnim, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      animation.start();
+    } else {
+      micAnim.setValue(1);
+    }
+    return () => animation?.stop();
+  }, [isCryDetectionActive, micAnim]);
+
+  useEffect(() => {
     const init = async () => {
-      await setupAudio();
-      const savedMode = await AsyncStorage.getItem("darkMode");
-      if (savedMode !== null) setIsDarkMode(JSON.parse(savedMode));
-      const today = new Date().toDateString();
-      const lastDate = await AsyncStorage.getItem("lastUsageDate");
-      const count = await AsyncStorage.getItem("usageCount");
-      if (lastDate !== today) {
-        await AsyncStorage.multiSet([
-          ["lastUsageDate", today],
-          ["usageCount", "0"],
-        ]);
-        setDailyUsageCount(0);
-      } else {
-        setDailyUsageCount(Number(count) || 0);
+      const storedExpiry = await AsyncStorage.getItem("premium_expiry");
+      const storedIsPremium = await AsyncStorage.getItem("is_premium");
+      const activeCoupon = await AsyncStorage.getItem("active_coupon_code");
+      if (storedIsPremium === "true") setIsPremium(true);
+      if (storedExpiry && Date.now() < Number(storedExpiry)) setIsPremium(true);
+
+      try {
+        const res = await fetch(`${SOUND_CONFIG_JSON}?t=${Date.now()}`);
+        const data = await res.json();
+        setSoundsData(data);
+        if (activeCoupon) {
+          const couponRes = await fetch(
+            `${COUPONS_CONFIG_JSON}?t=${Date.now()}`,
+          );
+          const coupons = await couponRes.json();
+          const validCoupon = coupons.find((c: any) => c.code === activeCoupon);
+          if (!validCoupon) {
+            setIsPremium(false);
+            setFreeLimit(5);
+            await AsyncStorage.removeItem("is_premium");
+            await AsyncStorage.removeItem("active_coupon_code");
+          }
+        }
+      } catch (error: unknown) {
+        const cached = await AsyncStorage.getItem("cached_sounds_config");
+        if (cached) setSoundsData(JSON.parse(cached));
+      } finally {
+        setIsLoadingData(false);
       }
+
+      const downloads = await AsyncStorage.getItem("downloaded_songs");
+      if (downloads) setDownloadedIds(JSON.parse(downloads));
+      const unlocked = await AsyncStorage.getItem("unlocked_songs");
+      if (unlocked) setUnlockedIds(JSON.parse(unlocked));
+      const count = await AsyncStorage.getItem("usageCount");
+      setDailyUsageCount(Number(count) || 0);
+      await Audio.setAudioModeAsync({
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+      });
     };
     init();
 
     const unsubLoaded = rewarded.addAdEventListener(
       RewardedAdEventType.LOADED,
-      () => {
-        setAdLoaded(true);
-        if (isAdLoading)
-          rewarded.show().catch(() => {
-            setIsAdLoading(false);
-            rewarded.load();
-          });
-      },
+      () => setAdLoaded(true),
     );
-
-    // הוספת מאזין לשגיאות - חשוב מאוד למקרה שאין מלאי מודעות!
-    const unsubError = rewarded.addAdEventListener(
-      AdEventType.ERROR,
-      (error) => {
-        console.log("Ad Error: ", error);
-        setAdLoaded(false);
-        setIsAdLoading(false);
-        // אם יש שגיאה בטעינה, נטעין מחדש בשקט
-        rewarded.load();
-      },
-    );
-
     const unsubEarned = rewarded.addAdEventListener(
       RewardedAdEventType.EARNED_REWARD,
-      () => {
-        setDailyUsageCount((prev) => {
-          const nc = Math.max(0, prev - 5);
-          AsyncStorage.setItem("usageCount", nc.toString());
-          return nc;
-        });
-        if (pendingSoundRef.current) unlockAndPlay(pendingSoundRef.current);
+      async () => {
+        if (pendingSoundRef.current) {
+          const soundId = pendingSoundRef.current;
+          setUnlockedIds((prev) => {
+            const newList = [...prev, soundId];
+            AsyncStorage.setItem("unlocked_songs", JSON.stringify(newList));
+            return newList;
+          });
+          const item = soundsData.find((s) => s.id === soundId);
+          if (item) {
+            await downloadSound(item.id, item.fileName);
+            toggleSound(item.id, item.fileName);
+          }
+          pendingSoundRef.current = null;
+        }
       },
     );
-
-    const unsubClosed = rewarded.addAdEventListener(AdEventType.CLOSED, () => {
-      setAdLoaded(false);
-      setIsAdLoading(false);
-      rewarded.load();
-      Object.values(activeSounds).forEach((s) => s.playAsync().catch(() => {}));
-    });
-
     rewarded.load();
     return () => {
       unsubLoaded();
       unsubEarned();
-      unsubClosed();
-      unsubError();
     };
-  }, [isAdLoading, unlockAndPlay, activeSounds]);
+  }, [soundsData, downloadSound, toggleSound]);
 
-  const handlePress = async (item: any) => {
-    if (loadingSounds[item.id]) return;
-    if (activeSounds[item.id] || dailyUsageCount < FREE_LIMIT_PER_DAY) {
-      if (!activeSounds[item.id]) {
-        const nc = dailyUsageCount + 1;
-        setDailyUsageCount(nc);
-        AsyncStorage.setItem("usageCount", nc.toString());
-      }
-      toggleSound(item.id, item.file);
-    } else {
-      Alert.alert(
-        "Limit Reached",
-        "Watch a short ad to unlock 5 more free uses!",
-        [
-          { text: "Not Now", style: "cancel" },
-          {
-            text: "Watch Ad",
-            onPress: () => {
-              pendingSoundRef.current = item.id;
-              setIsAdLoading(true);
-              if (adLoaded) {
-                rewarded.show().catch(() => {
-                  setIsAdLoading(false);
-                  rewarded.load();
-                });
-              } else {
-                rewarded.load();
-                // אם אחרי 5 שניות עדיין לא נטען, נשחרר את ה-Modal
-                setTimeout(() => setIsAdLoading(false), 5000);
-              }
-            },
-          },
-        ],
-      );
-    }
-  };
+  if (isLoadingData)
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color="#00E676" />
+      </View>
+    );
 
-  const updateVolume = async (soundId: string, volume: number) => {
-    const sound = activeSounds[soundId];
-    if (sound) await sound.setVolumeAsync(volume);
-  };
+  if (isBlackMode)
+    return (
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={() => setIsBlackMode(false)}
+        style={styles.blackScreen}
+      >
+        <StatusBar hidden />
+        <Text style={styles.blackScreenText}>tap to return</Text>{" "}
+      </TouchableOpacity>
+    );
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={
-          isDarkMode
-            ? ["#0f172a", "#020617", "#1e1b4b"]
-            : ["#f8fafc", "#cbd5e1"]
-        }
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <BlurView
-        tint={isDarkMode ? "dark" : "light"}
-        intensity={isDarkMode ? 15 : 10}
+        colors={isDarkMode ? ["#0f172a", "#020617", "#1e1b4b"] : weatherColors}
         style={StyleSheet.absoluteFill}
       />
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.headerArea}>
         <View style={styles.headerRow}>
-          <Text
-            style={[styles.header, { color: isDarkMode ? "#fff" : "#000" }]}
-          >
-            Relax & Focus
-          </Text>
-          <Switch
-            value={isDarkMode}
-            onValueChange={async (v) => {
-              setIsDarkMode(v);
-              await AsyncStorage.setItem("darkMode", JSON.stringify(v));
-            }}
-            trackColor={{ false: "#767577", true: "#00E676" }}
-          />
+          <Text style={[styles.header, { color: textColor }]}>Relax Songs</Text>
+          <View style={styles.topActions}>
+            <TouchableOpacity
+              onPress={() => setShowCouponModal(true)}
+              style={styles.miniActionBtn}
+            >
+              <Ionicons name="gift-outline" size={18} color="#FFD700" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setIsBlackMode(true)}
+              style={styles.miniActionBtn}
+            >
+              <Ionicons name="moon-outline" size={18} color={textColor} />
+            </TouchableOpacity>
+
+            <Animated.View style={{ opacity: micAnim }}>
+              <TouchableOpacity
+                onPress={toggleCryDetection}
+                style={[
+                  styles.miniActionBtn,
+                  isCryDetectionActive && { backgroundColor: "#ff5252" },
+                ]}
+              >
+                <Ionicons
+                  name="mic-outline"
+                  size={18}
+                  color={isCryDetectionActive ? "#fff" : "#00E676"}
+                />
+              </TouchableOpacity>
+            </Animated.View>
+
+            <Switch
+              value={isDarkMode}
+              onValueChange={setIsDarkMode}
+              trackColor={{ false: "#767577", true: "#00E676" }}
+              style={{ transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] }}
+            />
+          </View>
         </View>
 
-        <View
+        <TextInput
           style={[
-            styles.badge,
+            styles.searchBar,
             {
-              borderColor: isDarkMode
-                ? "rgba(255,255,255,0.15)"
-                : "rgba(0,0,0,0.1)",
+              color: textColor,
+              backgroundColor: isDarkMode
+                ? "rgba(255,255,255,0.05)"
+                : "rgba(0,0,0,0.03)",
             },
           ]}
-        >
-          <Text
-            style={[
-              styles.badgeText,
-              { color: isDarkMode ? "#cbd5e1" : "#475569" },
-            ]}
+          placeholder="Search sounds..."
+          placeholderTextColor={subTextColor}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+
+        <View style={styles.toolsRow}>
+          <TouchableOpacity
+            style={[styles.toolButton, isWeatherSyncing && styles.activeTool]}
+            onPress={syncWeather}
+            disabled={isWeatherSyncing}
           >
-            {dailyUsageCount}/{FREE_LIMIT_PER_DAY} Free Uses Today
-          </Text>
+            {isWeatherSyncing ? (
+              <ActivityIndicator size="small" color="#000" />
+            ) : (
+              <Ionicons name="cloudy-night-outline" size={15} color="#00E676" />
+            )}
+            <Text
+              style={[
+                styles.toolText,
+                { color: isWeatherSyncing ? "#000" : textColor },
+              ]}
+            >
+              {isWeatherSyncing ? "Syncing..." : "Smart Sync"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.toolButton,
+              timerSeconds !== null ? styles.activeTimer : null,
+            ]}
+            onPress={() => setShowTimerPicker(true)}
+          >
+            <Ionicons
+              name="timer-outline"
+              size={15}
+              color={timerSeconds ? "#000" : "#00E676"}
+            />
+            <Text
+              style={[
+                styles.toolText,
+                { color: timerSeconds ? "#000" : textColor },
+              ]}
+            >
+              {timerSeconds ? formatTime(timerSeconds) : "Timer"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.catScroll}
+        >
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category}
+              onPress={() => setSelectedCategory(category)}
+              style={[
+                styles.catTab,
+                selectedCategory === category ? styles.activeCat : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.catText,
+                  {
+                    color:
+                      selectedCategory === category ? "#000" : subTextColor,
+                  },
+                ]}
+              >
+                {category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.grid}>
-          {SOUNDS_DATA.map((item) => {
+          {filtered.map((item) => {
             const isActive = !!activeSounds[item.id];
-            const isLoading = !!loadingSounds[item.id];
             return (
               <View key={item.id} style={styles.cardContainer}>
                 <TouchableOpacity
-                  activeOpacity={isLoading ? 1 : 0.8}
                   style={[
                     styles.card,
-                    {
-                      borderColor: isDarkMode
-                        ? "rgba(255,255,255,0.1)"
-                        : "rgba(0,0,0,0.05)",
-                    },
                     isActive && {
                       borderColor: item.glow,
-                      backgroundColor: `${item.glow}25`,
-                      shadowColor: item.glow,
-                      elevation: 15,
-                      shadowOpacity: 0.7,
-                      shadowRadius: 20,
+                      backgroundColor: `${item.glow}20`,
                     },
                   ]}
                   onPress={() => handlePress(item)}
                 >
-                  {isLoading ? (
+                  {downloadingIds[item.id] ? (
                     <ActivityIndicator size="small" color="#00E676" />
                   ) : (
-                    <Image source={item.icon} style={styles.icon} />
+                    <Image
+                      source={{ uri: item.iconUrl }}
+                      style={styles.icon}
+                      contentFit="contain"
+                    />
                   )}
                   <Text
-                    style={[
-                      styles.label,
-                      { color: isDarkMode ? "#fff" : "#1e293b" },
-                    ]}
+                    style={[styles.label, { color: textColor }]}
                     numberOfLines={1}
                   >
                     {item.label}
@@ -428,38 +672,115 @@ export default function HomeScreen() {
                     minimumValue={0}
                     maximumValue={1}
                     value={0.7}
-                    onSlidingComplete={(val) => updateVolume(item.id, val)}
-                    minimumTrackTintColor={item.glow}
-                    maximumTrackTintColor={
-                      isDarkMode
-                        ? "rgba(255, 255, 255, 0.3)"
-                        : "rgba(0, 0, 0, 0.1)"
+                    onSlidingComplete={(v) =>
+                      activeSounds[item.id]?.setVolumeAsync(v)
                     }
-                    thumbTintColor="#ffffff"
+                    minimumTrackTintColor={item.glow}
                   />
                 )}
               </View>
             );
           })}
         </View>
+
+        <View style={styles.footerRow}>
+          <TouchableOpacity
+            onPress={() =>
+              Linking.openURL(`market://details?id=${APP_PACKAGE_NAME}`)
+            }
+            style={styles.footerBtn}
+          >
+            <Ionicons name="star-outline" size={16} color={subTextColor} />
+            <Text style={[styles.footerText, { color: subTextColor }]}>
+              Rate App{" "}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.footerSeparator} />
+          <TouchableOpacity
+            onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}
+            style={styles.footerBtn}
+          >
+            <Ionicons name="mail-outline" size={16} color={subTextColor} />
+            <Text style={[styles.footerText, { color: subTextColor }]}>
+              Support{" "}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <Modal
+        visible={showCouponModal}
         transparent
-        visible={isAdLoading && !adLoaded}
         animationType="fade"
+        onRequestClose={() => setShowCouponModal(false)}
       >
-        <View style={styles.loaderOverlay}>
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color="#00E676" />
-            <Text style={styles.loaderText}>Preparing Ad...</Text>
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowCouponModal(false)}
+        >
+          <View
+            style={styles.modalContent}
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={styles.modalTitle}>Enter Coupon Code</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="ZAMIR"
+              placeholderTextColor="#666"
+              autoCapitalize="characters"
+              value={couponInput}
+              onChangeText={setCouponInput}
+            />
+            <TouchableOpacity style={styles.modalBtn} onPress={checkCoupon}>
+              <Text style={styles.modalBtnText}>Apply</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showTimerPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTimerPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTimerPicker(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Turn off in:</Text>
+            {[15, 30, 45, 60, 90].map((m) => (
+              <TouchableOpacity
+                key={m}
+                style={styles.modalOption}
+                onPress={() => {
+                  setTimerSeconds(m * 60);
+                  setShowTimerPicker(false);
+                }}
+              >
+                <Text style={styles.modalOptionText}>{m} mins</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.modalClose}
+              onPress={() => {
+                setTimerSeconds(null);
+                setShowTimerPicker(false);
+              }}
+            >
+              <Text style={{ color: "#ff5252", fontWeight: "bold" }}>
+                Cancel Timer
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       <View style={styles.adContainer}>
         <BannerAd
-          unitId={BANNER_ID}
+          unitId={process.env.EXPO_PUBLIC_BANNER_ID}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         />
       </View>
@@ -469,62 +790,159 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-  scrollContent: { padding: 15, paddingTop: 60, paddingBottom: 110 },
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#000",
+  },
+  headerArea: { paddingTop: 45, paddingHorizontal: 20 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 25,
+    marginBottom: 12,
   },
-  header: { fontSize: 34, fontWeight: "900", letterSpacing: -1.5 },
-  badge: {
-    backgroundColor: "rgba(255, 255, 255, 0.07)",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 25,
-    marginBottom: 35,
-    borderWidth: 1,
-    alignSelf: "center",
-  },
-  badgeText: { fontSize: 13, fontWeight: "800" },
-  grid: {
+  header: { fontSize: 22, fontWeight: "900" },
+  topActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "flex-end",
   },
-  cardContainer: { width: "31%", marginBottom: 25, alignItems: "center" },
+  miniActionBtn: {
+    padding: 7,
+    marginLeft: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  searchBar: {
+    height: 38,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  toolsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 5,
+  },
+  toolButton: {
+    flex: 0.48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  activeTool: { backgroundColor: "#00E676" },
+  activeTimer: { backgroundColor: "#FFEB3B" },
+  toolText: { marginLeft: 5, fontWeight: "700", fontSize: 10 },
+  catScroll: { marginVertical: 5 },
+  catTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    marginRight: 6,
+  },
+  activeCat: { backgroundColor: "#00E676" },
+  catText: { fontWeight: "700", fontSize: 10 },
+  scrollContent: { padding: 15, paddingBottom: 110 },
+  grid: { flexDirection: "row", flexWrap: "wrap" },
+  cardContainer: { width: "31%", marginHorizontal: "1%", marginBottom: 12 },
   card: {
     width: "100%",
     aspectRatio: 1,
-    borderRadius: 28,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1.5,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 12,
+    padding: 8,
   },
-  icon: { width: "65%", height: "65%", marginBottom: 8, borderRadius: 14 },
-  label: { fontSize: 11, fontWeight: "800", textAlign: "center" },
-  slider: { width: "100%", height: 40, marginTop: 8 },
+  icon: { width: "45%", height: "45%", marginBottom: 4 },
+  label: { fontSize: 9, fontWeight: "800" },
+  slider: { width: "100%", height: 30 },
   adContainer: {
     position: "absolute",
     bottom: 10,
     width: "100%",
     alignItems: "center",
   },
-  loaderOverlay: {
+  blackScreen: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.9)",
+    backgroundColor: "#000",
     justifyContent: "center",
     alignItems: "center",
   },
-  loaderContainer: {
-    backgroundColor: "#111",
-    padding: 35,
-    borderRadius: 30,
+  blackScreenText: { color: "#111", fontSize: 12 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#222",
   },
-  loaderText: { color: "#fff", marginTop: 20, fontWeight: "700", fontSize: 16 },
+  modalContent: {
+    backgroundColor: "#1e1b4b",
+    width: "80%",
+    borderRadius: 20,
+    padding: 25,
+    alignItems: "center",
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 15,
+  },
+  modalInput: {
+    width: "100%",
+    height: 45,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    color: "#fff",
+    paddingHorizontal: 15,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  modalBtn: {
+    backgroundColor: "#00E676",
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 10,
+  },
+  modalBtnText: { color: "#000", fontWeight: "bold" },
+  modalOption: {
+    padding: 15,
+    width: "100%",
+    borderBottomWidth: 0.5,
+    borderColor: "#333",
+  },
+  modalOptionText: { color: "#fff", textAlign: "center", fontSize: 16 },
+  modalClose: { marginTop: 15 },
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 30,
+    marginBottom: 20,
+    opacity: 0.6,
+  },
+  footerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+  },
+  footerText: { fontSize: 13, fontWeight: "600" },
+  footerSeparator: {
+    width: 1,
+    height: 15,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginHorizontal: 15,
+  },
 });
