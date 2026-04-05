@@ -1,15 +1,15 @@
+import { Audio } from "expo-av";
+import * as Location from "expo-location";
 import { useCallback, useState } from "react";
 import { Alert } from "react-native";
-import * as Location from "expo-location";
-import { SoundsData } from "../types";
-import { Audio } from "expo-av";
+import { SoundJson } from "../types";
 
 type UseWeatherParams = {
   apiKey: string;
   url: string;
   isDarkMode: boolean;
-  soundsData: SoundsData[];
-  stopAllSounds: VoidFunction;
+  soundsData: SoundJson[];
+  stopAllSounds: () => Promise<void>;
   downloadedIds: string[];
   unlockedIds: string[];
   playSoundDirect: (fileName: string) => Promise<Audio.Sound | null>;
@@ -111,7 +111,7 @@ export const useWeather = ({
     setIsWeatherSyncing(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
+      if (status !== Audio.PermissionStatus.GRANTED) {
         Alert.alert("Error", "Location permission is required.");
         return;
       }

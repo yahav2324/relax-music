@@ -1,17 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
-import { File, Paths } from "expo-file-system";
+import { Audio } from "expo-av";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -35,8 +28,12 @@ import {
   RewardedAd,
   RewardedAdEventType,
 } from "react-native-google-mobile-ads";
-import { SoundsData } from "./types";
-import { useWeather } from "./hooks/useWeather";
+import {
+  useAudioPlayer,
+  useCryDetection,
+  useFiltered,
+  useWeather,
+} from "../hooks";
 
 const REMOTE_ASSETS_BASE = process.env.EXPO_PUBLIC_REMOTE_ASSETS_BASE;
 const WEATHER_API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY;
@@ -56,38 +53,22 @@ const rewarded = RewardedAd.createForAdRequest(
 );
 
 export default function HomeScreen() {
-  const [soundsData, setSoundsData] = useState<SoundsData[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [activeSounds, setActiveSounds] = useState<Record<string, Audio.Sound>>(
-    {},
-  );
-  const [downloadingIds, setDownloadingIds] = useState<Record<string, boolean>>(
-    {},
-  );
-  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
-  const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
-  const [dailyUsageCount, setDailyUsageCount] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
+
   const [adLoaded, setAdLoaded] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
-  const pendingSoundRef = useRef<string | null>(null);
-
-  const [isBlackMode, setIsBlackMode] = useState(false);
-  const [showTimerPicker, setShowTimerPicker] = useState(false);
-  const [showCouponModal, setShowCouponModal] = useState(false);
-  const [isCryDetectionActive, setIsCryDetectionActive] = useState(false);
-  const [couponInput, setCouponInput] = useState("");
   const [freeLimit, setFreeLimit] = useState(5);
   const [isPremium, setIsPremium] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const [dailyUsageCount, setDailyUsageCount] = useState(0);
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
 
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isBlackMode, setIsBlackMode] = useState(false);
   const textColor = isDarkMode ? "#ffffff" : "#1e293b";
   const subTextColor = isDarkMode ? "#94a3b8" : "#475569";
-  const cloudAnim = useRef(new Animated.Value(-100)).current;
-  const micAnim = useRef(new Animated.Value(1)).current;
+
+  const cloudAnimation = useRef(new Animated.Value(-100)).current;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -95,94 +76,28 @@ export default function HomeScreen() {
     return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
-  const stopAllSounds = useCallback(async () => {
-    const ids = Object.keys(activeSounds);
-    for (const id of ids) {
-      try {
-        await activeSounds[id].stopAsync();
-        await activeSounds[id].unloadAsync();
-      } catch {
-        console.error("Can't to stop all sounds");
-      }
-    }
-    setActiveSounds({});
-    setTimerSeconds(null);
-  }, [activeSounds]);
-
-  const downloadSound = useCallback(async (id: string, fileName: string) => {
-    const cleanFileName = fileName.trim();
-    const downloadUrl = VIDEO_FOLDER + cleanFileName;
-    const localFile = new File(Paths.document, cleanFileName);
-    setDownloadingIds((prev) => ({ ...prev, [id]: true }));
-    try {
-      await File.downloadFileAsync(downloadUrl, localFile);
-      const currentDownloads = await AsyncStorage.getItem("downloaded_songs");
-      let downloadsArr = currentDownloads ? JSON.parse(currentDownloads) : [];
-      if (!downloadsArr.includes(id)) {
-        downloadsArr.push(id);
-        await AsyncStorage.setItem(
-          "downloaded_songs",
-          JSON.stringify(downloadsArr),
-        );
-        setDownloadedIds(downloadsArr);
-      }
-      return localFile.uri;
-    } catch {
-      return null;
-    } finally {
-      setDownloadingIds((prev) => ({ ...prev, [id]: false }));
-    }
-  }, []);
-
-  const toggleSound = useCallback(
-    async (soundId: string, fileName: string) => {
-      const localFile = new File(Paths.document, fileName);
-      if (activeSounds[soundId]) {
-        try {
-          await activeSounds[soundId].stopAsync();
-          await activeSounds[soundId].unloadAsync();
-        } catch {
-          console.error("Error can`t open this audio");
-        }
-        setActiveSounds((prev) => {
-          const ns = { ...prev };
-          delete ns[soundId];
-          return ns;
-        });
-        return;
-      }
-      try {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: localFile.uri },
-          { shouldPlay: true, isLooping: true, volume: 0.7 },
-        );
-        setActiveSounds((prev) => ({ ...prev, [soundId]: sound }));
-      } catch {
-        setDownloadedIds((prev) => {
-          const ns = prev.filter((id) => id !== soundId);
-          AsyncStorage.setItem("downloaded_songs", JSON.stringify(ns));
-          return ns;
-        });
-      }
-    },
-    [activeSounds],
-  );
-
-  const playSoundDirect = useCallback(
-    async (fileName: string): Promise<Audio.Sound | null> => {
-      const localFile = new File(Paths.document, fileName);
-      try {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: localFile.uri },
-          { shouldPlay: true, isLooping: true, volume: 0.7 },
-        );
-        return sound;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
+  const {
+    soundsJson,
+    pendingSoundRef,
+    showTimerPicker,
+    downloadSound,
+    downloadedIds,
+    activeSounds,
+    stopAllSounds,
+    timerSeconds,
+    toggleSound,
+    unlockedIds,
+    setActiveSounds,
+    setSoundsJson,
+    setDownloadedIds,
+    setUnlockedIds,
+    setTimerSeconds,
+    downloadingIds,
+    setShowTimerPicker,
+    playSoundDirect,
+  } = useAudioPlayer({
+    videoFolder: VIDEO_FOLDER,
+  });
 
   const { isWeatherSyncing, syncWeather, weatherColors } = useWeather({
     apiKey: WEATHER_API_KEY,
@@ -194,11 +109,20 @@ export default function HomeScreen() {
     playSoundDirect,
     setActiveSounds,
     setDailyUsageCount,
-    soundsData,
+    soundsData: soundsJson,
     stopAllSounds,
     unlockedIds,
     url: WEATHER_URL,
   });
+
+  const {
+    categories,
+    filtered,
+    setSearchQuery,
+    setSelectedCategory,
+    searchQuery,
+    selectedCategory,
+  } = useFiltered({ soundsJson: soundsJson });
 
   const checkCoupon = async () => {
     if (!couponInput.trim()) return;
@@ -226,72 +150,6 @@ export default function HomeScreen() {
     } catch {
       Alert.alert("Error", "Could not verify coupon.");
     }
-  };
-
-  const toggleCryDetection = async () => {
-    await stopAllSounds();
-    if (isCryDetectionActive) {
-      setIsCryDetectionActive(false);
-      try {
-        await recordingRef.current?.stopAndUnloadAsync();
-      } catch (e) {
-        console.error("Error can't start cry detection", e);
-      }
-      recordingRef.current = null;
-      return;
-    }
-    const { status, canAskAgain } = await Audio.getPermissionsAsync();
-    if (status === "denied" && !canAskAgain) {
-      Alert.alert(
-        "Microphone Required",
-        "Microphone access is disabled. Please enable it in settings.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Open Settings", onPress: () => Linking.openSettings() },
-        ],
-      );
-      return;
-    }
-    const { status: newStatus } = await Audio.requestPermissionsAsync();
-    if (newStatus === "granted") {
-      startCryDetectionLogic();
-    }
-  };
-
-  const startCryDetectionLogic = async () => {
-    try {
-      setIsCryDetectionActive(true);
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-      });
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(
-        Audio.RecordingOptionsPresets.LOW_QUALITY,
-      );
-      recording.setProgressUpdateInterval(500);
-      recording.setOnRecordingStatusUpdate((status) => {
-        if (status.metering && status.metering > -25) {
-          triggerAutoPlay();
-        }
-      });
-      await recording.startAsync();
-      recordingRef.current = recording;
-    } catch (err) {
-      console.error("Cry Detection failed:", err);
-      setIsCryDetectionActive(false);
-    }
-  };
-
-  const triggerAutoPlay = () => {
-    if (Object.keys(activeSounds).length > 0) return;
-    const babySound = soundsData.find(
-      (s) => s.category === "Baby" || s.label.includes("White Noise"),
-    );
-    if (babySound) handlePress(babySound);
   };
 
   const handlePress = async (item: any) => {
@@ -325,80 +183,25 @@ export default function HomeScreen() {
     }
   };
 
-  const categories = useMemo(
-    () => [
-      "All",
-      ...new Set(soundsData.map((s) => s.category).filter(Boolean)),
-    ],
-    [soundsData],
-  );
-
-  const filtered = useMemo(
-    () =>
-      soundsData.filter(
-        (s) =>
-          s.label.toLowerCase().includes(searchQuery.toLowerCase()) &&
-          (selectedCategory === "All" || s.category === selectedCategory),
-      ),
-    [searchQuery, soundsData, selectedCategory],
-  );
+  const { isCryDetectionActive, toggleCryDetection, micAnimation } =
+    useCryDetection({
+      activeSounds,
+      handlePress,
+      soundsJson,
+      stopAllSounds,
+      isBlackMode,
+    });
 
   useEffect(() => {
     Animated.loop(
-      Animated.timing(cloudAnim, {
+      Animated.timing(cloudAnimation, {
         toValue: 450,
         duration: 30000,
         easing: Easing.linear,
         useNativeDriver: true,
       }),
     ).start();
-  }, [cloudAnim]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (timerSeconds !== null && timerSeconds > 0) {
-      interval = setInterval(() => {
-        setTimerSeconds((prev) => (prev !== null ? prev - 1 : null));
-      }, 1000);
-    } else if (timerSeconds === 0) {
-      stopAllSounds();
-      Alert.alert("Rest Time", "The timer has finished. Sleep well!");
-    }
-    return () => clearInterval(interval);
-  }, [timerSeconds, stopAllSounds]);
-
-  useEffect(() => {
-    if (timerSeconds !== null && timerSeconds <= 60 && timerSeconds > 0) {
-      const vol = timerSeconds / 60;
-      Object.values(activeSounds).forEach((s) => s.setVolumeAsync(vol));
-    }
-  }, [timerSeconds, activeSounds]);
-
-  useEffect(() => {
-    let animation: Animated.CompositeAnimation;
-    if (isCryDetectionActive) {
-      animation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(micAnim, {
-            toValue: 0.3,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(micAnim, {
-            toValue: 1,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      animation.start();
-    } else {
-      micAnim.setValue(1);
-    }
-    return () => animation?.stop();
-  }, [isCryDetectionActive, micAnim]);
+  }, [cloudAnimation]);
 
   useEffect(() => {
     const init = async () => {
@@ -411,7 +214,7 @@ export default function HomeScreen() {
       try {
         const res = await fetch(`${SOUND_CONFIG_JSON}?t=${Date.now()}`);
         const data = await res.json();
-        setSoundsData(data);
+        setSoundsJson(data);
         if (activeCoupon) {
           const couponRes = await fetch(
             `${COUPONS_CONFIG_JSON}?t=${Date.now()}`,
@@ -427,7 +230,7 @@ export default function HomeScreen() {
         }
       } catch (error: unknown) {
         const cached = await AsyncStorage.getItem("cached_sounds_config");
-        if (cached) setSoundsData(JSON.parse(cached));
+        if (cached) setSoundsJson(JSON.parse(cached));
       } finally {
         setIsLoadingData(false);
       }
@@ -459,7 +262,7 @@ export default function HomeScreen() {
             AsyncStorage.setItem("unlocked_songs", JSON.stringify(newList));
             return newList;
           });
-          const item = soundsData.find((s) => s.id === soundId);
+          const item = soundsJson.find((s) => s.id === soundId);
           if (item) {
             await downloadSound(item.id, item.fileName);
             toggleSound(item.id, item.fileName);
@@ -473,7 +276,15 @@ export default function HomeScreen() {
       unsubLoaded();
       unsubEarned();
     };
-  }, [soundsData, downloadSound, toggleSound]);
+  }, [
+    soundsJson,
+    downloadSound,
+    toggleSound,
+    setDownloadedIds,
+    setUnlockedIds,
+    setSoundsJson,
+    pendingSoundRef,
+  ]);
 
   if (isLoadingData)
     return (
@@ -506,6 +317,20 @@ export default function HomeScreen() {
           <Text style={[styles.header, { color: textColor }]}>Relax Songs</Text>
           <View style={styles.topActions}>
             <TouchableOpacity
+              onPress={() => stopAllSounds()}
+              style={styles.miniActionBtn}
+              disabled={Object.keys(activeSounds).length === 0}
+            >
+              <Ionicons
+                name="stop"
+                size={18}
+                color="#ff2200"
+                style={
+                  Object.keys(activeSounds).length === 0 && { opacity: 0.3 }
+                }
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => setShowCouponModal(true)}
               style={styles.miniActionBtn}
             >
@@ -519,7 +344,7 @@ export default function HomeScreen() {
               <Ionicons name="moon-outline" size={18} color={textColor} />
             </TouchableOpacity>
 
-            <Animated.View style={{ opacity: micAnim }}>
+            <Animated.View style={{ opacity: micAnimation }}>
               <TouchableOpacity
                 onPress={toggleCryDetection}
                 style={[
@@ -725,7 +550,7 @@ export default function HomeScreen() {
             <Text style={styles.modalTitle}>Enter Coupon Code</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="ZAMIR"
+              placeholder="coupon..."
               placeholderTextColor="#666"
               autoCapitalize="characters"
               value={couponInput}

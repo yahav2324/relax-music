@@ -1,4 +1,4 @@
-export type SoundsData = {
+export type SoundJson = {
   id: string;
   label: string;
   category: string;
