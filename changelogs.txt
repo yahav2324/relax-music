@@ -6,3 +6,9 @@
 
 1.0.0:
 - Initial release.
+
+1.1.10:
+- Fixed "record icon" animation bug.
+
+1.1.11:
+- Cleaned code.

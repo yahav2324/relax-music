@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { SoundJson } from "../types";
+
 type UseFilteredParams = {
   soundsJson: SoundJson[];
 };
+
 export const useFiltered = ({ soundsJson }: UseFilteredParams) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -32,3 +34,5 @@ export const useFiltered = ({ soundsJson }: UseFilteredParams) => {
     selectedCategory,
   };
 };
+
+export type UseFilteredReturn = ReturnType<typeof useFiltered>;

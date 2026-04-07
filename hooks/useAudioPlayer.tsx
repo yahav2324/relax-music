@@ -6,6 +6,9 @@ import { Alert } from "react-native";
 import { SoundJson } from "../types";
 
 type UseAudioPlayerParams = { videoFolder: string };
+
+export type UseAudioPlayerReturn = ReturnType<typeof useAudioPlayer>;
+
 export const useAudioPlayer = ({ videoFolder }: UseAudioPlayerParams) => {
   const pendingSoundRef = useRef<string | null>(null);
   const [showTimerPicker, setShowTimerPicker] = useState(false);
@@ -123,18 +126,31 @@ export const useAudioPlayer = ({ videoFolder }: UseAudioPlayerParams) => {
     }
   }, [timerSeconds, activeSounds]);
 
+  const isTimerActive = timerSeconds !== null && timerSeconds > 0;
+
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (timerSeconds !== null && timerSeconds > 0) {
-      interval = setInterval(() => {
-        setTimerSeconds((prev) => (prev !== null ? prev - 1 : null));
-      }, 1000);
-    } else if (timerSeconds === 0) {
-      stopAllSounds();
-      Alert.alert("Rest Time", "The timer has finished. Sleep well!");
+    let interval: any = null;
+
+    const tick = () => {
+      setTimerSeconds((prev) => {
+        if (prev === null || prev <= 1) {
+          if (interval) clearInterval(interval);
+          stopAllSounds();
+          Alert.alert("Rest Time", "The timer has finished. Sleep well!");
+          return 0;
+        }
+        return prev - 1;
+      });
+    };
+
+    if (isTimerActive) {
+      interval = setInterval(tick, 1000);
     }
-    return () => clearInterval(interval);
-  }, [timerSeconds, stopAllSounds, setTimerSeconds]);
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isTimerActive, stopAllSounds]);
 
   return {
     soundsJson,

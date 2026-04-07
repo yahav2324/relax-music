@@ -2,7 +2,7 @@
   "expo": {
     "name": "Relax Songs",
     "slug": "relax-songs",
-    "version": "1.1.9",
+    "version": "1.1.11",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "relaxsongs",
@@ -22,7 +22,7 @@
     },
     "android": {
       "package": "com.yahav.relaxsongs",
-      "versionCode": 18,
+      "versionCode": 20,
       "permissions": [
         "MODIFY_AUDIO_SETTINGS",
         "ACCESS_COARSE_LOCATION",

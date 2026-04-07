@@ -9,6 +9,7 @@ type UseCryDetection = {
   activeSounds: Record<string, Audio.Sound>;
   handlePress: (item: any) => Promise<void>;
   isBlackMode: boolean;
+  micAnimation: Animated.Value;
 };
 
 export const useCryDetection = ({
@@ -17,9 +18,8 @@ export const useCryDetection = ({
   activeSounds,
   handlePress,
   isBlackMode,
+  micAnimation,
 }: UseCryDetection) => {
-  const micAnimation = useRef(new Animated.Value(1)).current;
-
   const recordingRef = useRef<Audio.Recording | null>(null);
   const [isCryDetectionActive, setIsCryDetectionActive] = useState(false);
 
@@ -118,6 +118,5 @@ export const useCryDetection = ({
   return {
     toggleCryDetection,
     isCryDetectionActive,
-    micAnimation,
   };
 };

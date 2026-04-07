@@ -22,6 +22,8 @@ type UseWeatherParams = {
   >;
 };
 
+export type UseWeatherReturn = ReturnType<typeof useWeather>;
+
 export const useWeather = ({
   apiKey,
   url,

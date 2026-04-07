@@ -1,22 +1,22 @@
+import { COLORS } from "@/common/constant/theme";
+import { useColors } from "@/hooks/useColors";
+import { useUserCredits } from "@/hooks/useUserCredits";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
-import { Audio } from "expo-av";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
-  Easing,
   Linking,
   Modal,
   Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -28,12 +28,12 @@ import {
   RewardedAd,
   RewardedAdEventType,
 } from "react-native-google-mobile-ads";
-import {
-  useAudioPlayer,
-  useCryDetection,
-  useFiltered,
-  useWeather,
-} from "../hooks";
+import { HeaderArea } from "../components/header/headerArea/headerArea";
+import { useAudioPlayer, useFiltered, useWeather } from "../hooks";
+import { createStyles } from "./index.styles";
+import { useAnimation } from "@/hooks/useAnimation";
+
+const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
 const REMOTE_ASSETS_BASE = process.env.EXPO_PUBLIC_REMOTE_ASSETS_BASE;
 const WEATHER_API_KEY = process.env.EXPO_PUBLIC_WEATHER_API_KEY;
@@ -53,28 +53,32 @@ const rewarded = RewardedAd.createForAdRequest(
 );
 
 export default function HomeScreen() {
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const styles = createStyles();
 
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [adLoaded, setAdLoaded] = useState(false);
 
-  const [freeLimit, setFreeLimit] = useState(5);
-  const [isPremium, setIsPremium] = useState(false);
-  const [dailyUsageCount, setDailyUsageCount] = useState(0);
-  const [showCouponModal, setShowCouponModal] = useState(false);
-  const [couponInput, setCouponInput] = useState("");
+  const userCreditsData = useUserCredits();
+  const {
+    couponInput,
+    dailyUsageCount,
+    freeLimit,
+    isPremium,
+    setCouponInput,
+    setDailyUsageCount,
+    setFreeLimit,
+    setIsPremium,
+    setShowCouponModal,
+    showCouponModal,
+  } = userCreditsData;
 
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [isBlackMode, setIsBlackMode] = useState(false);
-  const textColor = isDarkMode ? "#ffffff" : "#1e293b";
-  const subTextColor = isDarkMode ? "#94a3b8" : "#475569";
+  const colorsData = useColors();
+  const { isBlackMode, isDarkMode, setIsDarkMode, subTextColor, textColor } =
+    colorsData;
 
-  const cloudAnimation = useRef(new Animated.Value(-100)).current;
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-  };
+  const AudioPlayerData = useAudioPlayer({
+    videoFolder: VIDEO_FOLDER,
+  });
 
   const {
     soundsJson,
@@ -84,7 +88,6 @@ export default function HomeScreen() {
     downloadedIds,
     activeSounds,
     stopAllSounds,
-    timerSeconds,
     toggleSound,
     unlockedIds,
     setActiveSounds,
@@ -95,11 +98,9 @@ export default function HomeScreen() {
     downloadingIds,
     setShowTimerPicker,
     playSoundDirect,
-  } = useAudioPlayer({
-    videoFolder: VIDEO_FOLDER,
-  });
+  } = AudioPlayerData;
 
-  const { isWeatherSyncing, syncWeather, weatherColors } = useWeather({
+  const weatherData = useWeather({
     apiKey: WEATHER_API_KEY,
     dailyUsageCount,
     downloadedIds,
@@ -115,15 +116,12 @@ export default function HomeScreen() {
     url: WEATHER_URL,
   });
 
-  const {
-    categories,
-    filtered,
-    setSearchQuery,
-    setSelectedCategory,
-    searchQuery,
-    selectedCategory,
-  } = useFiltered({ soundsJson: soundsJson });
+  const shouldShowMovingCloud =
+    !isDarkMode && weatherData.weatherColors?.length > 0;
+  const { cloudAnimation, micAnimation } = useAnimation(shouldShowMovingCloud);
 
+  const filteredData = useFiltered({ soundsJson: soundsJson });
+  const { filtered } = filteredData;
   const checkCoupon = async () => {
     if (!couponInput.trim()) return;
     try {
@@ -183,26 +181,6 @@ export default function HomeScreen() {
     }
   };
 
-  const { isCryDetectionActive, toggleCryDetection, micAnimation } =
-    useCryDetection({
-      activeSounds,
-      handlePress,
-      soundsJson,
-      stopAllSounds,
-      isBlackMode,
-    });
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(cloudAnimation, {
-        toValue: 450,
-        duration: 30000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    ).start();
-  }, [cloudAnimation]);
-
   useEffect(() => {
     const init = async () => {
       const storedExpiry = await AsyncStorage.getItem("premium_expiry");
@@ -241,10 +219,6 @@ export default function HomeScreen() {
       if (unlocked) setUnlockedIds(JSON.parse(unlocked));
       const count = await AsyncStorage.getItem("usageCount");
       setDailyUsageCount(Number(count) || 0);
-      await Audio.setAudioModeAsync({
-        staysActiveInBackground: true,
-        playsInSilentModeIOS: true,
-      });
     };
     init();
 
@@ -284,6 +258,9 @@ export default function HomeScreen() {
     setUnlockedIds,
     setSoundsJson,
     pendingSoundRef,
+    setIsPremium,
+    setDailyUsageCount,
+    setFreeLimit,
   ]);
 
   if (isLoadingData)
@@ -297,7 +274,7 @@ export default function HomeScreen() {
     return (
       <TouchableOpacity
         activeOpacity={1}
-        onPress={() => setIsBlackMode(false)}
+        onPress={() => setIsDarkMode(false)}
         style={styles.blackScreen}
       >
         <StatusBar hidden />
@@ -308,156 +285,37 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={isDarkMode ? ["#0f172a", "#020617", "#1e1b4b"] : weatherColors}
+        colors={
+          isDarkMode
+            ? COLORS.background.gradientDark
+            : weatherData.weatherColors
+        }
         style={StyleSheet.absoluteFill}
       />
 
-      <View style={styles.headerArea}>
-        <View style={styles.headerRow}>
-          <Text style={[styles.header, { color: textColor }]}>Relax Songs</Text>
-          <View style={styles.topActions}>
-            <TouchableOpacity
-              onPress={() => stopAllSounds()}
-              style={styles.miniActionBtn}
-              disabled={Object.keys(activeSounds).length === 0}
-            >
-              <Ionicons
-                name="stop"
-                size={18}
-                color="#ff2200"
-                style={
-                  Object.keys(activeSounds).length === 0 && { opacity: 0.3 }
-                }
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setShowCouponModal(true)}
-              style={styles.miniActionBtn}
-            >
-              <Ionicons name="gift-outline" size={18} color="#FFD700" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setIsBlackMode(true)}
-              style={styles.miniActionBtn}
-            >
-              <Ionicons name="moon-outline" size={18} color={textColor} />
-            </TouchableOpacity>
-
-            <Animated.View style={{ opacity: micAnimation }}>
-              <TouchableOpacity
-                onPress={toggleCryDetection}
-                style={[
-                  styles.miniActionBtn,
-                  isCryDetectionActive && { backgroundColor: "#ff5252" },
-                ]}
-              >
-                <Ionicons
-                  name="mic-outline"
-                  size={18}
-                  color={isCryDetectionActive ? "#fff" : "#00E676"}
-                />
-              </TouchableOpacity>
-            </Animated.View>
-
-            <Switch
-              value={isDarkMode}
-              onValueChange={setIsDarkMode}
-              trackColor={{ false: "#767577", true: "#00E676" }}
-              style={{ transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] }}
-            />
-          </View>
-        </View>
-
-        <TextInput
-          style={[
-            styles.searchBar,
-            {
-              color: textColor,
-              backgroundColor: isDarkMode
-                ? "rgba(255,255,255,0.05)"
-                : "rgba(0,0,0,0.03)",
-            },
-          ]}
-          placeholder="Search sounds..."
-          placeholderTextColor={subTextColor}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
+      {shouldShowMovingCloud && (
+        <AnimatedIonicons
+          name="cloud"
+          size={120}
+          color="#ffffff"
+          style={{
+            position: "absolute",
+            top: 100,
+            opacity: 0.3,
+            transform: [{ translateX: cloudAnimation }],
+          }}
         />
+      )}
 
-        <View style={styles.toolsRow}>
-          <TouchableOpacity
-            style={[styles.toolButton, isWeatherSyncing && styles.activeTool]}
-            onPress={syncWeather}
-            disabled={isWeatherSyncing}
-          >
-            {isWeatherSyncing ? (
-              <ActivityIndicator size="small" color="#000" />
-            ) : (
-              <Ionicons name="cloudy-night-outline" size={15} color="#00E676" />
-            )}
-            <Text
-              style={[
-                styles.toolText,
-                { color: isWeatherSyncing ? "#000" : textColor },
-              ]}
-            >
-              {isWeatherSyncing ? "Syncing..." : "Smart Sync"}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.toolButton,
-              timerSeconds !== null ? styles.activeTimer : null,
-            ]}
-            onPress={() => setShowTimerPicker(true)}
-          >
-            <Ionicons
-              name="timer-outline"
-              size={15}
-              color={timerSeconds ? "#000" : "#00E676"}
-            />
-            <Text
-              style={[
-                styles.toolText,
-                { color: timerSeconds ? "#000" : textColor },
-              ]}
-            >
-              {timerSeconds ? formatTime(timerSeconds) : "Timer"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.catScroll}
-        >
-          {categories.map((category) => (
-            <TouchableOpacity
-              key={category}
-              onPress={() => setSelectedCategory(category)}
-              style={[
-                styles.catTab,
-                selectedCategory === category ? styles.activeCat : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.catText,
-                  {
-                    color:
-                      selectedCategory === category ? "#000" : subTextColor,
-                  },
-                ]}
-              >
-                {category}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+      <HeaderArea
+        filter={filteredData}
+        weather={weatherData}
+        audioPlayer={AudioPlayerData}
+        colors={colorsData}
+        handlePress={handlePress}
+        userCredits={userCreditsData}
+        micAnimation={micAnimation}
+      />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.grid}>
@@ -532,7 +390,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-
       <Modal
         visible={showCouponModal}
         transparent
@@ -562,7 +419,6 @@ export default function HomeScreen() {
           </View>
         </Pressable>
       </Modal>
-
       <Modal
         visible={showTimerPicker}
         transparent
@@ -602,7 +458,6 @@ export default function HomeScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-
       <View style={styles.adContainer}>
         <BannerAd
           unitId={process.env.EXPO_PUBLIC_BANNER_ID}
@@ -612,162 +467,3 @@ export default function HomeScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000",
-  },
-  headerArea: { paddingTop: 45, paddingHorizontal: 20 },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  header: { fontSize: 22, fontWeight: "900" },
-  topActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  miniActionBtn: {
-    padding: 7,
-    marginLeft: 6,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  searchBar: {
-    height: 38,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  toolsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 5,
-  },
-  toolButton: {
-    flex: 0.48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  activeTool: { backgroundColor: "#00E676" },
-  activeTimer: { backgroundColor: "#FFEB3B" },
-  toolText: { marginLeft: 5, fontWeight: "700", fontSize: 10 },
-  catScroll: { marginVertical: 5 },
-  catTab: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 15,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    marginRight: 6,
-  },
-  activeCat: { backgroundColor: "#00E676" },
-  catText: { fontWeight: "700", fontSize: 10 },
-  scrollContent: { padding: 15, paddingBottom: 110 },
-  grid: { flexDirection: "row", flexWrap: "wrap" },
-  cardContainer: { width: "31%", marginHorizontal: "1%", marginBottom: 12 },
-  card: {
-    width: "100%",
-    aspectRatio: 1,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 8,
-  },
-  icon: { width: "45%", height: "45%", marginBottom: 4 },
-  label: { fontSize: 9, fontWeight: "800" },
-  slider: { width: "100%", height: 30 },
-  adContainer: {
-    position: "absolute",
-    bottom: 10,
-    width: "100%",
-    alignItems: "center",
-  },
-  blackScreen: {
-    flex: 1,
-    backgroundColor: "#000",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  blackScreenText: { color: "#111", fontSize: 12 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "#1e1b4b",
-    width: "80%",
-    borderRadius: 20,
-    padding: 25,
-    alignItems: "center",
-  },
-  modalTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-  },
-  modalInput: {
-    width: "100%",
-    height: 45,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 10,
-    color: "#fff",
-    paddingHorizontal: 15,
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  modalBtn: {
-    backgroundColor: "#00E676",
-    paddingVertical: 10,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-  },
-  modalBtnText: { color: "#000", fontWeight: "bold" },
-  modalOption: {
-    padding: 15,
-    width: "100%",
-    borderBottomWidth: 0.5,
-    borderColor: "#333",
-  },
-  modalOptionText: { color: "#fff", textAlign: "center", fontSize: 16 },
-  modalClose: { marginTop: 15 },
-  footerRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 30,
-    marginBottom: 20,
-    opacity: 0.6,
-  },
-  footerBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 10,
-  },
-  footerText: { fontSize: 13, fontWeight: "600" },
-  footerSeparator: {
-    width: 1,
-    height: 15,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    marginHorizontal: 15,
-  },
-});
