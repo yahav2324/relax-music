@@ -33,7 +33,6 @@ export const SPACING = {
     headerTop: 45,
     screenPadding: 20,
     footerBottom: 110,
-    // שינוי כאן: React Native מעדיף "1%" כערך ישיר ולא כמשתנה string כללי ב-TS לעיתים
     gridGap: "1%" as const,
   },
   element: {
@@ -41,10 +40,10 @@ export const SPACING = {
     s: 5,
     sm: 6,
     m: 8,
-    ml: 10, // הוספתי ml שהיה חסר
+    ml: 10,
     l: 12,
-    xl: 16, // הוספתי xl שהיה חסר
-    xxl: 24, // הוספתי xxl שהיה חסר
+    xl: 16,
+    xxl: 24,
   },
 };
 
@@ -52,7 +51,7 @@ export const SIZES = {
   font: {
     tiny: 9,
     small: 10,
-    footer: 13, // הוספתי footer שהיה חסר
+    footer: 13,
     caption: 12,
     body: 14,
     subtitle: 16,

@@ -1,5 +1,5 @@
+import { COLORS, SPACING, SIZES, OPACITY } from "@/common/constant/theme";
 import { StyleSheet } from "react-native";
-import { COLORS, SPACING, SIZES, OPACITY } from "../common/constant/theme";
 
 export const createStyles = () =>
   StyleSheet.create({
@@ -108,7 +108,7 @@ export const createStyles = () =>
       padding: SPACING.element.xl,
       width: "100%",
       borderBottomWidth: 0.5,
-      borderColor: "#333", // צבע ספציפי לקו הפרדה בתוך המודאל
+      borderColor: "#333",
     },
     modalOptionText: {
       color: COLORS.text.primary,

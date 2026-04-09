@@ -72,7 +72,11 @@ export const HeaderRow = ({
           onPress={() => setShowCouponModal(true)}
           style={styles.miniActionBtn}
         >
-          <Ionicons name="gift-outline" size={18} color="#FFD700" />
+          <Ionicons
+            name="gift-outline"
+            size={18}
+            color={isDarkMode ? "#FFD700" : "#bda30c"}
+          />
         </TouchableOpacity>
 
         <TouchableOpacity

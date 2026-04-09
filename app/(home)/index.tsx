@@ -1,4 +1,7 @@
 import { COLORS } from "@/common/constant/theme";
+import { HeaderArea } from "@/components/header/headerArea/headerArea";
+import { useAudioPlayer, useFiltered, useWeather } from "@/hooks";
+import { useAnimation } from "@/hooks/useAnimation";
 import { useColors } from "@/hooks/useColors";
 import { useUserCredits } from "@/hooks/useUserCredits";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,10 +31,7 @@ import {
   RewardedAd,
   RewardedAdEventType,
 } from "react-native-google-mobile-ads";
-import { HeaderArea } from "../components/header/headerArea/headerArea";
-import { useAudioPlayer, useFiltered, useWeather } from "../hooks";
 import { createStyles } from "./index.styles";
-import { useAnimation } from "@/hooks/useAnimation";
 
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
@@ -73,7 +73,7 @@ export default function HomeScreen() {
   } = userCreditsData;
 
   const colorsData = useColors();
-  const { isBlackMode, isDarkMode, setIsDarkMode, subTextColor, textColor } =
+  const { isBlackMode, isDarkMode, setIsBlackMode, subTextColor, textColor } =
     colorsData;
 
   const AudioPlayerData = useAudioPlayer({
@@ -117,11 +117,12 @@ export default function HomeScreen() {
   });
 
   const shouldShowMovingCloud =
-    !isDarkMode && weatherData.weatherColors?.length > 0;
+    !isDarkMode && !!weatherData.weatherColors?.length;
   const { cloudAnimation, micAnimation } = useAnimation(shouldShowMovingCloud);
 
   const filteredData = useFiltered({ soundsJson: soundsJson });
   const { filtered } = filteredData;
+
   const checkCoupon = async () => {
     if (!couponInput.trim()) return;
     try {
@@ -270,25 +271,15 @@ export default function HomeScreen() {
       </View>
     );
 
-  if (isBlackMode)
-    return (
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={() => setIsDarkMode(false)}
-        style={styles.blackScreen}
-      >
-        <StatusBar hidden />
-        <Text style={styles.blackScreenText}>tap to return</Text>{" "}
-      </TouchableOpacity>
-    );
-
   return (
     <View style={styles.container}>
       <LinearGradient
         colors={
           isDarkMode
             ? COLORS.background.gradientDark
-            : weatherData.weatherColors
+            : weatherData.weatherColors?.length > 0
+              ? weatherData.weatherColors
+              : ["#4facfe", "#00f2fe"]
         }
         style={StyleSheet.absoluteFill}
       />
@@ -301,7 +292,7 @@ export default function HomeScreen() {
           style={{
             position: "absolute",
             top: 100,
-            opacity: 0.3,
+            opacity: 0.2,
             transform: [{ translateX: cloudAnimation }],
           }}
         />
@@ -342,6 +333,24 @@ export default function HomeScreen() {
                       contentFit="contain"
                     />
                   )}
+                  {!downloadedIds.includes(item.id) && (
+                    <View
+                      style={{
+                        position: "absolute",
+                        left: -4,
+                        bottom: -4,
+                        backgroundColor: "rgba(0,0,0,0.5)",
+                        borderRadius: 10,
+                        padding: 2,
+                      }}
+                    >
+                      <Ionicons
+                        name="cloud-download-outline"
+                        size={14}
+                        color="white"
+                      />
+                    </View>
+                  )}
                   <Text
                     style={[styles.label, { color: textColor }]}
                     numberOfLines={1}
@@ -375,7 +384,7 @@ export default function HomeScreen() {
           >
             <Ionicons name="star-outline" size={16} color={subTextColor} />
             <Text style={[styles.footerText, { color: subTextColor }]}>
-              Rate App{" "}
+              Rate App
             </Text>
           </TouchableOpacity>
           <View style={styles.footerSeparator} />
@@ -385,11 +394,33 @@ export default function HomeScreen() {
           >
             <Ionicons name="mail-outline" size={16} color={subTextColor} />
             <Text style={[styles.footerText, { color: subTextColor }]}>
-              Support{" "}
+              Support
             </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {isBlackMode && (
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setIsBlackMode(false)}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "#000",
+              zIndex: 1000,
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+        >
+          <StatusBar hidden />
+          <Text style={{ color: "#333", fontWeight: "500" }}>
+            tap to return
+          </Text>
+        </TouchableOpacity>
+      )}
+
       <Modal
         visible={showCouponModal}
         transparent
@@ -419,6 +450,7 @@ export default function HomeScreen() {
           </View>
         </Pressable>
       </Modal>
+
       <Modal
         visible={showTimerPicker}
         transparent
@@ -458,9 +490,10 @@ export default function HomeScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
       <View style={styles.adContainer}>
         <BannerAd
-          unitId={process.env.EXPO_PUBLIC_BANNER_ID}
+          unitId={process.env.EXPO_PUBLIC_BANNER_ID || ""}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         />
       </View>

@@ -23,18 +23,27 @@ export const useCryDetection = ({
   const recordingRef = useRef<Audio.Recording | null>(null);
   const [isCryDetectionActive, setIsCryDetectionActive] = useState(false);
 
+  const stopRecordingSafely = async () => {
+    try {
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      }
+    } catch (e) {
+      console.log("Recording already unloaded or error during stop:", e);
+    }
+  };
+
   const toggleCryDetection = async () => {
-    await stopAllSounds();
     if (isCryDetectionActive) {
       setIsCryDetectionActive(false);
-      try {
-        await recordingRef.current?.stopAndUnloadAsync();
-      } catch (e) {
-        console.error("Error can't start cry detection", e);
-      }
-      recordingRef.current = null;
+      await stopRecordingSafely();
       return;
     }
+
+    await stopAllSounds();
+    await stopRecordingSafely();
+
     const { status, canAskAgain } = await Audio.getPermissionsAsync();
     if (status === "denied" && !canAskAgain) {
       Alert.alert(
@@ -47,6 +56,7 @@ export const useCryDetection = ({
       );
       return;
     }
+
     const { status: newStatus } = await Audio.requestPermissionsAsync();
     if (newStatus === "granted") {
       startCryDetectionLogic();
@@ -63,21 +73,25 @@ export const useCryDetection = ({
         interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
         interruptionModeIOS: InterruptionModeIOS.DoNotMix,
       });
+
       const recording = new Audio.Recording();
       await recording.prepareToRecordAsync(
         Audio.RecordingOptionsPresets.LOW_QUALITY,
       );
+
       recording.setProgressUpdateInterval(500);
       recording.setOnRecordingStatusUpdate((status) => {
         if (status.metering && status.metering > -25) {
           triggerAutoPlay();
         }
       });
+
       await recording.startAsync();
       recordingRef.current = recording;
     } catch (err) {
       console.error("Cry Detection failed:", err);
       setIsCryDetectionActive(false);
+      await stopRecordingSafely();
     }
   };
 
@@ -90,7 +104,8 @@ export const useCryDetection = ({
   };
 
   useEffect(() => {
-    let animation: Animated.CompositeAnimation;
+    let animation: Animated.CompositeAnimation | null = null;
+
     if (isCryDetectionActive) {
       animation = Animated.loop(
         Animated.sequence([
@@ -112,8 +127,17 @@ export const useCryDetection = ({
     } else {
       micAnimation.setValue(1);
     }
-    return () => animation?.stop();
-  }, [isCryDetectionActive, micAnimation, isBlackMode]);
+
+    return () => {
+      if (animation) animation.stop();
+    };
+  }, [isCryDetectionActive, micAnimation]);
+
+  useEffect(() => {
+    return () => {
+      stopRecordingSafely();
+    };
+  }, []);
 
   return {
     toggleCryDetection,
